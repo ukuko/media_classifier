@@ -14,6 +14,10 @@ Options:
     --dry-run                   Perform a dry run without actually making changes
     --verbose                   Enable verbose mode for debugging
 
+Examples:
+
+    python mediaclassifier/mediaclassifier.py sort-videos --directory=/home/ekeko/Videos --verbose
+    
 """
 
 import docopt
