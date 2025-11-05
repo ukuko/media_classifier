@@ -3,8 +3,13 @@ classifier
 
 Usage:
     classifier.py sort-videos --directory=<directory> [--pattern=<pattern>] [--ignore-folders=<ignore_folders>]  [--recursive] [--dry-run] [--verbose]
+    classifier.py list-music-metadata  --directory=<directory> [--pattern=<pattern>] [--ignore-folders=<ignore_folders>]  [--recursive] [--dry-run] [--verbose]
     classifier.py (-h | --help)
 
+Commands:
+    sort-videos                 Sort video files into folders based on date pattern in file names.
+    list-music-metadata         List metadata of music files in the specified directory.
+    
 Options:
     -h --help                   Show this help message and exit.
     --directory=<directory>     The directory path where renaming operations will be performed.
@@ -17,13 +22,16 @@ Options:
 Examples:
 
     python mediaclassifier/mediaclassifier.py sort-videos --directory=/home/ekeko/Videos --verbose
-    
+    python mediaclassifier/mediaclassifier.py list-music-metadata --directory=/home/ekeko/workspace/music --recursive --dry-run --verbose
+
+        
 """
 
 import docopt
 import os
 import re
 import logging
+from mutagen import File as MutagenFile
 
 class Classifier:
     def __init__(self, args):
@@ -81,14 +89,40 @@ class Classifier:
 
             if not self.recursive:
                 break
-    
+
+    def list_music_metadata(self):
+        self.logger.debug("Start of method: read_music_metadata")
+
+        for root, dirs, files in os.walk(self.directory):
+            dirs[:] = [d for d in dirs if d not in self.ignore_folders]
+            for file in files:
+                if file.lower().endswith(('.mp3', '.flac')):
+                    music_path = os.path.join(root, file)
+                    self.logger.info(f"Reading metadata for: {music_path}")
+                    try:
+                        audio = MutagenFile(music_path, easy=True)
+                        if audio is not None:
+                            for key, value in audio.items():
+                                self.logger.info(f"  {key}: {value}")
+                        else:
+                            self.logger.warning("  No metadata found or unsupported file format.")
+                    except Exception as e:
+                        self.logger.error(f"  Error reading metadata: {e}")
+            if not self.recursive:
+                break
+
 def main():
     logging.getLogger("mediaclassifier").debug("Start of method: main")
     arguments = docopt.docopt(__doc__)
     print(arguments)
     classifier = Classifier(arguments)
-    if arguments['sort-videos']:
-        classifier.sort_videos()
+    match arguments:
+        case {'sort-videos': True}:
+            classifier.sort_videos()
+        case {'list-music-metadata': True}:
+            classifier.list_music_metadata()
+
+
 
 if __name__ == "__main__":
     main()
