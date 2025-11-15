@@ -5,12 +5,14 @@ Usage:
     classifier.py sort-videos --directory=<directory> [--pattern=<pattern>] [--ignore-folders=<ignore_folders>]  [--recursive] [--dry-run] [--verbose]
     classifier.py list-music-metadata --directory=<directory> [--pattern=<pattern>] [--ignore-folders=<ignore_folders>]  [--recursive] [--dry-run] [--verbose]
     classifier.py export-music-metadata --directory=<directory> [--pattern=<pattern>] [--ignore-folders=<ignore_folders>] [--recursive] [--format=<format>] [--output=<output>] [--verbose]
+    classifier.py overwrite-music-metadata --csv=<csv_path> [--dry-run] [--verbose]
     classifier.py (-h | --help)
 
 Commands:
     sort-videos                 Sort video files into folders based on date pattern in file names.
     list-music-metadata         List metadata of music files in the specified directory.
     export-music-metadata       Export metadata of music files to CSV (default) or JSON.
+    overwrite-music-metadata    Overwrite metadata of music files using a CSV file.
 
 Options:
     -h --help                   Show this help message and exit.
@@ -22,12 +24,14 @@ Options:
     --verbose                   Enable verbose mode for debugging
     --format=<format>           Export format: 'csv' or 'json' [default: 'csv']
     --output=<output>           Output file path [default: 'music_metadata.csv']
+    --csv=<csv_path>            Path to the CSV file containing metadata to overwrite
 
 Examples:
 
     python mediaclassifier/mediaclassifier.py sort-videos --directory=/home/ekeko/Videos --verbose
     python mediaclassifier/mediaclassifier.py list-music-metadata --directory=/home/ekeko/workspace/music --recursive --dry-run --verbose
     python mediaclassifier/mediaclassifier.py export-music-metadata --directory=/home/ekeko/workspace/music --recursive --format=csv --output=metadata.csv --verbose
+    python mediaclassifier/mediaclassifier.py overwrite-music-metadata --csv=/home/ekeko/workspace/media_classifier/metadata.csv --dry-run --verbose
 
 """
 
@@ -166,6 +170,50 @@ class Classifier:
             except Exception as e:
                 self.logger.error(f"Error writing CSV: {e}")
 
+    def overwrite_music_metadata_from_csv(self, csv_path):
+        self.logger.debug("Start of method: overwrite_music_metadata_from_csv")
+        # Only columns: album, albumartist, artist, date, genre, length, media, organization, title, tracknumber are used for metadata.
+        import ast
+        try:
+            with open(csv_path, newline='', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    file_path = row.get('file')
+                    if not file_path or not os.path.isfile(file_path):
+                        self.logger.warning(f"File not found or missing 'file' column: {file_path}")
+                        continue
+                    metadata = {}
+                    for k, v in row.items():
+                        if k == 'file' or not v:
+                            continue
+                        # Parse values like ['value'] or ["value"]
+                        try:
+                            parsed = ast.literal_eval(v)
+                            # If it's a list, take the first element, else use as is
+                            if isinstance(parsed, list) and parsed:
+                                metadata[k] = parsed[0]
+                            elif isinstance(parsed, (str, int, float)):
+                                metadata[k] = parsed
+                        except Exception:
+                            metadata[k] = v
+                    self.logger.info(f"Overwriting metadata for: {file_path}")
+                    try:
+                        audio = MutagenFile(file_path, easy=True)
+                        if audio is not None:
+                            for key, value in metadata.items():
+                                audio[key] = value
+                            if not self.dry_run:
+                                audio.save()
+                                self.logger.info(f"  Metadata updated: {metadata}")
+                            else:
+                                self.logger.info(f"  [Dry Run] Would update metadata: {metadata}")
+                        else:
+                            self.logger.warning("  No metadata found or unsupported file format.")
+                    except Exception as e:
+                        self.logger.error(f"  Error overwriting metadata: {e}")
+        except Exception as e:
+            self.logger.error(f"Error reading CSV file: {e}")
+
 def main():
     logging.getLogger("mediaclassifier").debug("Start of method: main")
     arguments = docopt.docopt(__doc__)
@@ -180,6 +228,9 @@ def main():
             export_format = arguments.get('--format') or 'csv'
             output_path = arguments.get('--output')
             classifier.export_music_metadata(export_format=export_format, output_path=output_path)
+        case {'overwrite-music-metadata': True}:
+            csv_path = arguments.get('--csv')
+            classifier.overwrite_music_metadata_from_csv(csv_path=csv_path)
 
 
 
